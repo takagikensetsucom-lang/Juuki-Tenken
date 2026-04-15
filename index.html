@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+    <title>重機始業前点検</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- LIFF -->
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <!-- Signature Pad -->
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <!-- Image Compression -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
+
+    <!-- vConsole (Debug Tool) -->
+    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+    <script>
+        // デバッグ用コンソールの起動
+        var vConsole = new window.VConsole();
+
+        // 未捕捉のエラーを画面上で可視化する
+        window.onerror = function (message, source, lineno, colno, error) {
+            alert("システムエラーが発生しました:\n" + message + "\n行:" + lineno);
+            console.error(error);
+        };
+        window.addEventListener('unhandledrejection', function (event) {
+            alert("非同期エラーが発生しました:\n" + (event.reason && event.reason.message ? event.reason.message : "Unknown Error"));
+            console.error(event.reason);
+        });
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+
+        .canvas-container {
+            border: 2px dashed #9ca3af;
+            border-radius: 8px;
+            background: #fff;
+            touch-action: none;
+        }
+
+        input[type="radio"] {
+            display: none;
+        }
+
+        .radio-label {
+            transition: all 0.2s;
+        }
+
+        /* ◯のスタイル */
+        input[type="radio"][value="○"]:checked+.radio-label {
+            background-color: #10b981;
+            /* Tailwind emerald-500 */
+            color: white;
+            border-color: #10b981;
+        }
+
+        /* ×のスタイル */
+        input[type="radio"][value="×"]:checked+.radio-label {
+            background-color: #ef4444;
+            /* Tailwind red-500 */
+            color: white;
+            border-color: #ef4444;
+        }
+    </style>
+</head>
+
+<body class="pb-20">
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="fixed inset-0 bg-white bg-opacity-90 z-50 flex flex-col items-center justify-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mb-4"></div>
+        <p id="loading-text" class="text-lg font-semibold text-gray-700">システム初期化中...</p>
+    </div>
+
+    <div class="max-w-xl mx-auto p-4 md:p-6 space-y-6">
+
+        <!-- ヘッダー -->
+        <header class="text-center py-4 border-b-2 border-blue-600">
+            <h1 class="text-2xl font-bold text-blue-700">重機始業前点検</h1>
+        </header>
+
+        <form id="inspectionForm" class="space-y-6">
+
+            <!-- 点検者情報 -->
+            <section class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <h2 class="text-lg font-bold mb-3 border-l-4 border-blue-500 pl-2">点検者情報</h2>
+                <div id="employee-info" class="hidden text-lg font-semibold text-gray-800"></div>
+
+                <div id="guest-input-area" class="hidden space-y-3">
+                    <p class="text-sm text-red-500 font-semibold text-sm">システムに未登録のユーザーです。氏名を入力してください。</p>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">点検者氏名 <span
+                                class="text-red-500">*</span></label>
+                        <input type="text" id="guest-name"
+                            class="w-full border border-gray-300 rounded-md p-3 text-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            placeholder="例: 建設太郎">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 重機・現場情報 -->
+            <section class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <h2 class="text-lg font-bold mb-3 border-l-4 border-blue-500 pl-2">対象重機</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm text-gray-500">機械名 / 型式</p>
+                        <p id="equip-name" class="text-lg font-bold text-gray-800">--</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">現在の現場 <span
+                                class="text-red-500">*</span></label>
+                        <select id="site-select"
+                            class="w-full border border-gray-300 rounded-md p-3 text-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none required">
+                            <option value="">-- 選択してください --</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 点検項目エリア -->
+            <section class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold border-l-4 border-blue-500 pl-2">点検項目</h2>
+                    <button type="button" id="btn-all-ok"
+                        class="bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold py-2 px-4 rounded-full text-sm transition">
+                        全て「◯」にする
+                    </button>
+                </div>
+
+                <div id="checklist-container" class="space-y-4">
+                    <!-- 動的に生成される -->
+                </div>
+            </section>
+
+            <!-- 不具合報告エリア (デフォルト隠し) -->
+            <section id="defect-section"
+                class="bg-red-50 p-4 rounded-lg shadow-sm border border-red-300 hidden space-y-4">
+                <h2 class="text-lg font-bold text-red-600 border-l-4 border-red-500 pl-2 flex items-center">
+                    <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+                        </path>
+                    </svg>
+                    不具合の報告
+                </h2>
+                <p class="text-sm text-red-700">「×」が選択されています。必ず詳細と写真を添付してください。</p>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1 text-gray-800">不具合の箇所の詳細 <span
+                            class="text-red-500">*</span></label>
+                    <textarea id="defect-memo" rows="3"
+                        class="w-full border border-gray-300 rounded-md p-3 text-base focus:ring-2 focus:ring-red-500 outline-none"
+                        placeholder="どの部分がどのように悪いか具体的に記入してください"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1 text-gray-800">状況写真 <span
+                            class="text-red-500">*</span></label>
+                    <input type="file" id="defect-photo" accept="image/*"
+                        class="w-full border border-gray-300 rounded-md p-2 bg-white">
+                </div>
+            </section>
+
+            <!-- 備考 -->
+            <section class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <h2 class="text-lg font-bold mb-3 border-l-4 border-blue-500 pl-2">備考・その他</h2>
+                <textarea id="remarks" rows="2"
+                    class="w-full border border-gray-300 rounded-md p-3 text-base focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="特記事項があればご記入ください"></textarea>
+            </section>
+
+            <!-- 署名 -->
+            <section class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-lg font-bold border-l-4 border-blue-500 pl-2">点検者署名 <span
+                            class="text-red-500">*</span></h2>
+                    <button type="button" id="btn-clear-sig"
+                        class="text-sm text-gray-500 bg-gray-100 hover:bg-gray-200 py-1 px-3 rounded">クリア</button>
+                </div>
+                <p class="text-xs text-gray-500 mb-2">枠内に指でサインをしてください</p>
+                <canvas id="signature-pad" class="canvas-container w-full h-40"></canvas>
+            </section>
+
+            <!-- 送信ボタン -->
+            <div class="pt-4">
+                <button type="button" id="btn-submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg shadow-lg text-xl transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    点検データを送信する
+                </button>
+            </div>
+
+        </form>
+    </div>
+
+    <script>
+        // 設定値 (GitHub Actionsに設定した環境変数からデプロイ時に自動置換されます)
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzZ0BKTQDQUKDWz6L-XOo7NGGmQUWBakeo4g_rMY5CBVRZ1BvATeD2UYlXePVpZnGma/exec";
+        const LIFF_ID = "2009735065-LdQgwqyS";
+
+        // 状態
+        let appState = {
+            userId: "",
+            equipmentId: "",
+            isGuest: true,
+            checkItemCount: 0
+        };
+
+        // 点検項目マスタ
+        const CHECK_ITEMS = {
+            "バックホウ": ["エンジン", "計器（油圧・水温等）", "旋回", "走行", "ブレーキ", "履帯・リンク", "ブーム等の操作", "油圧継手・ホース", "バケット", "警報・灯火装置", "作業環境"],
+            "ブルドーザー": ["エンジン", "計器", "主クラッチ", "ブレーキ", "操向レバー", "警報・灯火装置"],
+            "振動ローラ": ["エンジン", "計器", "遠心クラッチ", "ブレーキ", "ハンドル", "チェーン", "Vベルト", "ミラー", "警報・灯火装置", "漏れ確認"],
+            "キャリアダンプ": ["エンジン駆動", "計器(油圧・水温・油温)", "主クラッチ, トランスミッション", "駐車ブレーキ, ロック", "操向レバー", "駆動チェーン・スプロケット", "起振用Vベルト", "バックミラー", "警報装置, 灯火装置"],
+            "重ダンプ": ["エンジン駆動", "計器(油圧・水温・油温)", "主クラッチ, トランスミッション", "駐車ブレーキ, ロック", "操向レバー", "駆動チェーン・スプロケット", "起振用Vベルト", "バックミラー", "警報装置, 灯火装置"]
+        };
+
+        // UI要素
+        const UI = {
+            loading: document.getElementById('loading'),
+            loadingText: document.getElementById('loading-text'),
+            empInfo: document.getElementById('employee-info'),
+            guestArea: document.getElementById('guest-input-area'),
+            guestName: document.getElementById('guest-name'),
+            equipName: document.getElementById('equip-name'),
+            siteSelect: document.getElementById('site-select'),
+            checklist: document.getElementById('checklist-container'),
+            defectSection: document.getElementById('defect-section'),
+            defectMemo: document.getElementById('defect-memo'),
+            defectPhoto: document.getElementById('defect-photo'),
+            btnAllOk: document.getElementById('btn-all-ok'),
+            btnSubmit: document.getElementById('btn-submit')
+        };
+
+        // Signature Pad
+        const canvas = document.getElementById('signature-pad');
+
+        // スマホでのサイン中に画面がスクロールしてしまうのを完全に防ぐ処理
+        const preventScroll = (e) => { 
+            // マルチタッチ等でなければデフォルトのスクロール＆ズームを防止
+            if (e.cancelable) {
+                e.preventDefault(); 
+            }
+        };
+        // 従来のタッチイベント
+        canvas.addEventListener('touchstart', preventScroll, { passive: false });
+        canvas.addEventListener('touchmove', preventScroll, { passive: false });
+        canvas.addEventListener('touchend', preventScroll, { passive: false });
+        // 最新iOS向けのポインターイベント
+        canvas.addEventListener('pointerdown', preventScroll, { passive: false });
+        canvas.addEventListener('pointermove', preventScroll, { passive: false });
+        canvas.addEventListener('pointerup', preventScroll, { passive: false });
+
+        function resizeCanvas() {
+            const ratio = Math.max(window.devicePixelRatio || 1, 1);
+            canvas.width = canvas.offsetWidth * ratio;
+            canvas.height = canvas.offsetHeight * ratio;
+            canvas.getContext("2d").scale(ratio, ratio);
+        }
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+        const signaturePad = new SignaturePad(canvas);
+        document.getElementById('btn-clear-sig').addEventListener('click', () => signaturePad.clear());
+
+        /**
+         * 初期化処理
+         */
+        async function initialize() {
+            try {
+                UI.loadingText.innerText = "[STEP 1] 定数チェック中...";
+
+                if (GAS_API_URL.includes("YOUR") || GAS_API_URL.includes("%%")) {
+                    throw new Error("GAS_API_URLが設定されていません。\nVSCodeで index.html を開き、164行目付近のGAS_API_URLに正しいURLを直接書き込んでください。");
+                }
+                if (LIFF_ID.includes("YOUR") || LIFF_ID.includes("%%")) {
+                    throw new Error("LIFF_IDが設定されていません。\nVSCodeで index.html を開き、165行目付近のLIFF_IDに正しい値を直接書き込んでください。");
+                }
+
+                UI.loadingText.innerText = "[STEP 2] URLパラメータ取得...";
+                const urlParams = new URLSearchParams(window.location.search);
+                appState.equipmentId = urlParams.get('id') || "";
+
+                UI.loadingText.innerText = "[STEP 3] LIFF SDKの初期化中... (liffId: " + LIFF_ID + ")";
+
+                try {
+                    await Promise.race([
+                        liff.init({ liffId: LIFF_ID }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error("LIFF初期化完了タイムアウト")), 5000))
+                    ]);
+                } catch (e) {
+                    throw new Error("[LIFF SDK ERROR] " + e.message);
+                }
+
+                UI.loadingText.innerText = "[STEP 4] プロフィール取得中...";
+                if (liff.isLoggedIn()) {
+                    const profile = await liff.getProfile();
+                    appState.userId = profile.userId;
+                } else {
+                    console.log("LIFF Not Logged In");
+                }
+
+                UI.loadingText.innerText = "[STEP 5] GASサーバーと通信中...";
+                await fetchInitialData();
+
+            } catch (err) {
+                console.error("Initialization Failed:", err);
+                const spinner = UI.loading.querySelector('.animate-spin');
+                if (spinner) spinner.classList.add('hidden');
+
+                UI.loadingText.innerText = "エラー詳細:\n" + err.message + "\n\nスタックトレース:\n" + (err.stack || "なし");
+                UI.loadingText.classList.replace('text-gray-700', 'text-red-600');
+                UI.loadingText.classList.add('px-4', 'text-left', 'text-xs', 'whitespace-pre-wrap', 'w-full', 'break-all', 'overflow-y-auto', 'max-h-64');
+            }
+        }
+
+        /**
+         * GASから初期データをフェッチ (fetch API)
+         */
+        async function fetchInitialData() {
+            try {
+                // iOS環境でのGAS宛てGETリクエストはCORS/リダイレクトエラー(Load failed)が起きやすいため、
+                // 強制的に POST(text/plain) モードでデータを取得するように変更
+                const payload = {
+                    action: 'getInitialData',
+                    userId: appState.userId,
+                    equipmentId: appState.equipmentId
+                };
+
+                const res = await fetch(GAS_API_URL, {
+                    method: "POST",
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify(payload)
+                }).then(r => r.json());
+
+                if (res.success) {
+                    renderApp(res);
+                } else {
+                    throw new Error("バックエンド処理エラー: " + res.error);
+                }
+            } catch (e) {
+                throw new Error("通信エラー: " + e.message);
+            }
+        }
+
+        /**
+         * 画面描画
+         */
+        function renderApp(data) {
+            // ユーザー情報
+            if (data.user.isEmployee) {
+                appState.isGuest = false;
+                UI.empInfo.classList.remove('hidden');
+                UI.empInfo.innerText = `${data.user.name} 様 (${data.user.department || '所属なし'})`;
+            } else {
+                appState.isGuest = true;
+                UI.guestArea.classList.remove('hidden');
+                const savedName = localStorage.getItem('guest_name');
+                if (savedName) UI.guestName.value = savedName;
+            }
+
+            // 現場リスト構築
+            UI.siteSelect.innerHTML = '<option value="">-- 現場を選択 --</option>';
+            data.sites.forEach(site => {
+                const opt = document.createElement('option');
+                opt.value = site.siteId;
+                opt.innerText = site.siteName;
+                UI.siteSelect.appendChild(opt);
+            });
+
+            // 重機情報
+            const eq = data.equipment;
+            UI.equipName.innerText = `${eq.name} [${eq.type}]`;
+
+            // 現場の初期選択
+            if (eq.siteId) {
+                UI.siteSelect.value = eq.siteId;
+            }
+
+            // 種別テキストから点検項目グループを判定 (部分一致)
+            let checkGroup = "バックホウ"; // デフォルト
+            const typeStr = eq.type ? eq.type.toString() : "";
+
+            if (typeStr.includes("油圧ショベル") || typeStr.includes("バックホウ") || typeStr.includes("ユンボ")) {
+                checkGroup = "バックホウ";
+            } else if (typeStr.includes("ブル・ドーザー") || typeStr.includes("ブルドーザー") || typeStr.includes("ブル")) {
+                checkGroup = "ブルドーザー";
+            } else if (typeStr.includes("振動ローラー") || typeStr.includes("振動ローラ") || typeStr.includes("ローラー")) {
+                checkGroup = "振動ローラ";
+            } else if (typeStr.includes("キャリアダンプ")) {
+                checkGroup = "キャリアダンプ";
+            } else if (typeStr.includes("重ダンプ") || typeStr.includes("ダンプ")) {
+                checkGroup = "重ダンプ";
+            }
+
+            // 点検項目の生成
+            const items = CHECK_ITEMS[checkGroup] || CHECK_ITEMS["バックホウ"];
+            appState.checkItemCount = items.length;
+
+            let html = '';
+            items.forEach((itemText, idx) => {
+                const qId = `q${idx + 1}`;
+                html += `
+                <div class="border border-gray-200 rounded-lg p-3 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="font-semibold text-gray-800">${idx + 1}. ${itemText}</div>
+                    <div class="flex gap-2 w-full sm:w-64 shrink-0">
+                        <label class="flex-1 text-center cursor-pointer relative">
+                            <input type="radio" name="${qId}" value="○" class="chk-radio">
+                            <div class="radio-label border-2 border-gray-300 rounded-full py-3 text-xl font-bold bg-white shadow-sm flex items-center justify-center">
+                                ◯
+                            </div>
+                        </label>
+                        <label class="flex-1 text-center cursor-pointer relative">
+                            <input type="radio" name="${qId}" value="×" class="chk-radio">
+                            <div class="radio-label border-2 border-gray-300 rounded-full py-3 text-xl font-bold bg-white shadow-sm flex items-center justify-center">
+                                ×
+                            </div>
+                        </label>
+                    </div>
+                </div>`;
+            });
+            UI.checklist.innerHTML = html;
+
+            // ラジオボタンのイベント設定（変更時）
+            const radios = document.querySelectorAll('.chk-radio');
+            radios.forEach(r => {
+                r.addEventListener('change', checkDefectVisibility);
+            });
+
+            UI.loading.classList.add('hidden');
+        }
+
+        /**
+         * 不具合報告エリアの表示ロジック
+         */
+        function checkDefectVisibility() {
+            const hasBad = Array.from(document.querySelectorAll('.chk-radio[value="×"]')).some(r => r.checked);
+            if (hasBad) {
+                UI.defectSection.classList.remove('hidden');
+            } else {
+                UI.defectSection.classList.add('hidden');
+            }
+        }
+
+        /**
+         * 全て◯にするボタン
+         */
+        UI.btnAllOk.addEventListener('click', () => {
+            const goodRadios = document.querySelectorAll('.chk-radio[value="○"]');
+            goodRadios.forEach(r => r.checked = true);
+            checkDefectVisibility();
+        });
+
+
+        // Blob/Base64 utility
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+
+        UI.btnSubmit.addEventListener('click', async () => {
+            // バリデーション
+            let inspectorName = appState.isGuest ? UI.guestName.value.trim() : document.getElementById('employee-info').innerText.split(' 様')[0];
+            if (appState.isGuest && !inspectorName) {
+                alert("点検者氏名を入力してください。");
+                UI.guestName.focus();
+                return;
+            }
+
+            if (!UI.siteSelect.value) {
+                alert("現場を選択してください。");
+                UI.siteSelect.focus();
+                return;
+            }
+
+            for (let i = 1; i <= appState.checkItemCount; i++) {
+                const checked = document.querySelector(`input[name="q${i}"]:checked`);
+                if (!checked) {
+                    alert(`点検項目 ${i} が選択されていません。`);
+                    return;
+                }
+            }
+
+            const hasBad = Array.from(document.querySelectorAll('.chk-radio[value="×"]')).some(r => r.checked);
+            if (hasBad) {
+                if (!UI.defectMemo.value.trim()) {
+                    alert("不具合の詳細を入力してください。");
+                    UI.defectMemo.focus();
+                    return;
+                }
+                if (!UI.defectPhoto.files || UI.defectPhoto.files.length === 0) {
+                    alert("不具合状況の写真を添付してください。");
+                    UI.defectPhoto.focus();
+                    return;
+                }
+            }
+
+            if (signaturePad.isEmpty()) {
+                alert("署名を入力してください。");
+                return;
+            }
+
+            // Loading state
+            UI.btnSubmit.disabled = true;
+            UI.btnSubmit.innerText = "データ処理中...";
+
+            if (appState.isGuest) {
+                localStorage.setItem('guest_name', inspectorName);
+            }
+
+            // フォームデータ作成
+            let formData = {
+                userId: appState.userId,
+                equipmentId: appState.equipmentId,
+                siteId: UI.siteSelect.value,
+                inspectorName: inspectorName,
+                defectMemo: document.getElementById('defect-memo').value,
+                remarks: document.getElementById('remarks').value,
+                signature_data: signaturePad.toDataURL("image/jpeg", 0.5) // PNG→JPEG変換で転送量を削減
+            };
+
+            for (let i = 1; i <= 11; i++) {
+                const el = document.querySelector(`input[name="q${i}"]:checked`);
+                formData[`q${i}`] = el ? el.value : "";
+            }
+
+            let compressedFiles = {};
+            if (hasBad && UI.defectPhoto.files.length > 0) {
+                UI.btnSubmit.innerText = "写真を圧縮中...";
+                try {
+                    const file = UI.defectPhoto.files[0];
+                    const compOptions = { maxSizeMB: 0.3, maxWidthOrHeight: 800, useWebWorker: false }; // 圧縮強化で転送量を削減
+                    const compressedFile = await imageCompression(file, compOptions);
+                    const base64String = await blobToBase64(compressedFile);
+
+                    compressedFiles["photo"] = {
+                        data: base64String,
+                        name: compressedFile.name,
+                        mimeType: compressedFile.type
+                    };
+                } catch (e) {
+                    alert("写真の圧縮に失敗しました: " + e.message);
+                    UI.btnSubmit.disabled = false;
+                    UI.btnSubmit.innerText = "点検データを送信する";
+                    return;
+                }
+            }
+
+            UI.btnSubmit.innerText = "サーバーへ送信中...";
+
+            try {
+                // 送信処理 (POST fetch)
+                const payload = {
+                    action: 'uploadDataAndFiles',
+                    data: formData,
+                    compressedFiles: compressedFiles
+                };
+
+                const response = await fetch(GAS_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify(payload)
+                });
+
+                const res = await response.json();
+
+                if (res.success) {
+                    alert("点検データを送信しました！");
+                    // フォームリセット
+                    document.getElementById('inspectionForm').reset();
+                    signaturePad.clear();
+                    UI.defectSection.classList.add('hidden');
+                    if (LIFF_ID !== "YOUR_LIFF_ID") liff.closeWindow();
+                } else {
+                    alert("サーバーエラー: " + res.error);
+                }
+
+            } catch (err) {
+                alert("通信エラー: " + err.message);
+                console.error(err);
+            } finally {
+                UI.btnSubmit.disabled = false;
+                UI.btnSubmit.innerText = "点検データを送信する";
+            }
+        });
+
+        // 実行開始
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initialize);
+        } else {
+            initialize();
+        }
+    </script>
+</body>
+
+</html>
