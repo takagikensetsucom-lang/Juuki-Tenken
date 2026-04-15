@@ -247,10 +247,10 @@
         const canvas = document.getElementById('signature-pad');
 
         // スマホでのサイン中に画面がスクロールしてしまうのを完全に防ぐ処理
-        const preventScroll = (e) => { 
+        const preventScroll = (e) => {
             // マルチタッチ等でなければデフォルトのスクロール＆ズームを防止
             if (e.cancelable) {
-                e.preventDefault(); 
+                e.preventDefault();
             }
         };
         // 従来のタッチイベント
@@ -531,7 +531,7 @@
                 inspectorName: inspectorName,
                 defectMemo: document.getElementById('defect-memo').value,
                 remarks: document.getElementById('remarks').value,
-                signature_data: signaturePad.toDataURL("image/jpeg", 0.5) // PNG→JPEG変換で転送量を削減
+                signature_data: signaturePad.toDataURL("image/png") // PNG形式で保存（GAS側と一致）
             };
 
             for (let i = 1; i <= 11; i++) {
