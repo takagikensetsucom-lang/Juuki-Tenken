@@ -204,17 +204,19 @@
         </form>
     </div>
 
+    <!-- 設定ファイル (GAS_API_URL, LIFF_ID が定義されています) -->
+    <script src="config.js"></script>
+
     <script>
-        // 設定値 (GitHub Actionsに設定した環境変数からデプロイ時に自動置換されます)
-        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzZ0BKTQDQUKDWz6L-XOo7NGGmQUWBakeo4g_rMY5CBVRZ1BvATeD2UYlXePVpZnGma/exec";
-        const LIFF_ID = "2009735065-LdQgwqyS";
+        // 設定値は config.js に分離されました
 
         // 状態
         let appState = {
             userId: "",
             equipmentId: "",
             isGuest: true,
-            checkItemCount: 0
+            checkItemCount: 0,
+            itemNames: []
         };
 
         // 点検項目マスタ
@@ -404,28 +406,40 @@
             }
 
             // 点検項目の生成
-            const items = CHECK_ITEMS[checkGroup] || CHECK_ITEMS["バックホウ"];
+            const masterCheckItems = data.checkItems || CHECK_ITEMS;
+            const items = masterCheckItems[checkGroup] || masterCheckItems["バックホウ"];
             appState.checkItemCount = items.length;
+            appState.itemNames = items;
 
             let html = '';
             items.forEach((itemText, idx) => {
                 const qId = `q${idx + 1}`;
                 html += `
-                <div class="border border-gray-200 rounded-lg p-3 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div class="font-semibold text-gray-800">${idx + 1}. ${itemText}</div>
-                    <div class="flex gap-2 w-full sm:w-64 shrink-0">
-                        <label class="flex-1 text-center cursor-pointer relative">
-                            <input type="radio" name="${qId}" value="○" class="chk-radio">
-                            <div class="radio-label border-2 border-gray-300 rounded-full py-3 text-xl font-bold bg-white shadow-sm flex items-center justify-center">
-                                ◯
-                            </div>
+                <div class="border border-gray-200 rounded-lg p-3 bg-gray-50 flex flex-col gap-3">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div class="font-semibold text-gray-800">${idx + 1}. ${itemText}</div>
+                        <div class="flex gap-2 w-full sm:w-64 shrink-0">
+                            <label class="flex-1 text-center cursor-pointer relative">
+                                <input type="radio" name="${qId}" value="○" class="chk-radio">
+                                <div class="radio-label border-2 border-gray-300 rounded-full py-3 text-xl font-bold bg-white shadow-sm flex items-center justify-center">
+                                    ◯
+                                </div>
+                            </label>
+                            <label class="flex-1 text-center cursor-pointer relative">
+                                <input type="radio" name="${qId}" value="×" class="chk-radio">
+                                <div class="radio-label border-2 border-gray-300 rounded-full py-3 text-xl font-bold bg-white shadow-sm flex items-center justify-center">
+                                    ×
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <label class="cursor-pointer text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 px-3 rounded flex items-center gap-1 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            写真を追加
+                            <input type="file" id="photo_${qId}" accept="image/*" class="hidden item-photo-input">
                         </label>
-                        <label class="flex-1 text-center cursor-pointer relative">
-                            <input type="radio" name="${qId}" value="×" class="chk-radio">
-                            <div class="radio-label border-2 border-gray-300 rounded-full py-3 text-xl font-bold bg-white shadow-sm flex items-center justify-center">
-                                ×
-                            </div>
-                        </label>
+                        <span id="photo_name_${qId}" class="text-xs text-gray-500 truncate max-w-[150px]"></span>
                     </div>
                 </div>`;
             });
@@ -435,6 +449,22 @@
             const radios = document.querySelectorAll('.chk-radio');
             radios.forEach(r => {
                 r.addEventListener('change', checkDefectVisibility);
+            });
+
+            // 写真選択時のファイル名表示
+            const photoInputs = document.querySelectorAll('.item-photo-input');
+            photoInputs.forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const qId = e.target.id.replace('photo_', '');
+                    const nameSpan = document.getElementById(`photo_name_${qId}`);
+                    if (e.target.files && e.target.files.length > 0) {
+                        nameSpan.innerText = e.target.files[0].name;
+                        nameSpan.classList.add('text-blue-600');
+                    } else {
+                        nameSpan.innerText = "";
+                        nameSpan.classList.remove('text-blue-600');
+                    }
+                });
             });
 
             UI.loading.classList.add('hidden');
@@ -529,22 +559,24 @@
                 equipmentId: appState.equipmentId,
                 siteId: UI.siteSelect.value,
                 inspectorName: inspectorName,
+                itemNames: appState.itemNames,
                 defectMemo: document.getElementById('defect-memo').value,
                 remarks: document.getElementById('remarks').value,
                 signature_data: signaturePad.toDataURL("image/png") // PNG形式で保存（GAS側と一致）
             };
 
-            for (let i = 1; i <= 11; i++) {
+            for (let i = 1; i <= appState.checkItemCount; i++) {
                 const el = document.querySelector(`input[name="q${i}"]:checked`);
                 formData[`q${i}`] = el ? el.value : "";
             }
 
             let compressedFiles = {};
-            if (hasBad && UI.defectPhoto.files.length > 0) {
-                UI.btnSubmit.innerText = "写真を圧縮中...";
-                try {
+            UI.btnSubmit.innerText = "写真を圧縮中...";
+            try {
+                const compOptions = { maxSizeMB: 0.3, maxWidthOrHeight: 800, useWebWorker: false }; // 圧縮強化で転送量を削減
+                
+                if (hasBad && UI.defectPhoto.files.length > 0) {
                     const file = UI.defectPhoto.files[0];
-                    const compOptions = { maxSizeMB: 0.3, maxWidthOrHeight: 800, useWebWorker: false }; // 圧縮強化で転送量を削減
                     const compressedFile = await imageCompression(file, compOptions);
                     const base64String = await blobToBase64(compressedFile);
 
@@ -553,12 +585,26 @@
                         name: compressedFile.name,
                         mimeType: compressedFile.type
                     };
-                } catch (e) {
-                    alert("写真の圧縮に失敗しました: " + e.message);
-                    UI.btnSubmit.disabled = false;
-                    UI.btnSubmit.innerText = "点検データを送信する";
-                    return;
                 }
+
+                for (let i = 1; i <= appState.checkItemCount; i++) {
+                    const photoInput = document.getElementById(`photo_q${i}`);
+                    if (photoInput && photoInput.files && photoInput.files.length > 0) {
+                        const file = photoInput.files[0];
+                        const compressedFile = await imageCompression(file, compOptions);
+                        const base64String = await blobToBase64(compressedFile);
+                        compressedFiles[`photo_q${i}`] = {
+                            data: base64String,
+                            name: compressedFile.name,
+                            mimeType: compressedFile.type
+                        };
+                    }
+                }
+            } catch (e) {
+                alert("写真の圧縮に失敗しました: " + e.message);
+                UI.btnSubmit.disabled = false;
+                UI.btnSubmit.innerText = "点検データを送信する";
+                return;
             }
 
             UI.btnSubmit.innerText = "サーバーへ送信中...";
